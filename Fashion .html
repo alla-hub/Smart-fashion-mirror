@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <title>Smart Fashion Mirror مع تتبع الجسم</title>
+  <style>
+    body, html {
+      margin: 0; padding: 0; height: 100%;
+      overflow: hidden;
+      display: flex; justify-content: center; align-items: center;
+      background: #222;
+    }
+    #container {
+      position: relative;
+      width: 90vw;
+      max-width: 600px;
+    }
+    video, canvas {
+      width: 100%;
+      border-radius: 12px;
+      transform: scaleX(-1); /* عكس الفيديو كالمرآة */
+      position: absolute;
+      top: 0; left: 0;
+    }
+    #videoElement {
+      z-index: 0;
+    }
+    #outputCanvas {
+      z-index: 1;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <video id="videoElement" autoplay playsinline></video>
+    <canvas id="outputCanvas"></canvas>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <script>
+    const videoElement = document.getElementById('videoElement');
+    const canvasElement = document.getElementById('outputCanvas');
+    const canvasCtx = canvasElement.getContext('2d');
+
+    // رابط صورة تيشيرت شفافة (يمكنك تغييره)
+    const tshirtImage = new Image();
+    tshirtImage.src = 'https://i.imgur.com/z7MZ9Jp.png'; // مثال تيشيرت شفاف
+
+    // تهيئة MediaPipe Pose
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 0,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults(onResults);
+
+    // إعداد الكاميرا
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await pose.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+
+    // ضبط حجم الكانفاس
+    videoElement.addEventListener('loadedmetadata', () => {
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
+    });
+
+    function onResults(results) {
+      // ارسم الفيديو خلف الكانفاس (اختياري لو تريد الفيديو تحت التيشيرت)
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      //canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      if (results.poseLandmarks) {
+        const landmarks = results.poseLandmarks;
+
+        // النقاط المهمة للتيشيرت: الكتف الأيسر (11), الكتف الأيمن (12), الصدر (23 تقريباً)
+        const leftShoulder = landmarks[11];
+        const rightShoulder = landmarks[12];
+        const chest = landmarks[23];
+
+        // تحويل نقاط النسب إلى إحداثيات على الكانفاس
+        function toCanvasCoords(landmark) {
+          return {
+            x: landmark.x * canvasElement.width,
+            y: landmark.y * canvasElement.height
+          };
+        }
+
+        const left = toCanvasCoords(leftShoulder);
+        const right = toCanvasCoords(rightShoulder);
+        const center = toCanvasCoords(chest);
+
+        // حساب عرض التيشيرت بين الكتفين
+        const width = Math.abs(right.x - left.x) * 1.3; // زيادة بسيطة للتغطية
+        // ارتفاع تقريبي للتيشيرت بناءً على الكتف والصدر
+        const height = width * 1.2;
+
+        // موقع التيشيرت (نبدأ تقريبًا من فوق الكتف الأيسر والقمة بين الكتفين)
+        const x = left.x - (width * 0.15);
+        const y = center.y - (height * 0.6);
+
+        // ارسم التيشيرت
+        canvasCtx.drawImage(tshirtImage, x, y, width, height);
+      }
+    }
+  </script>
+</body>
+</html>
